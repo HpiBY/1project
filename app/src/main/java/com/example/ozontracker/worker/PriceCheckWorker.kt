@@ -12,35 +12,45 @@ class PriceCheckWorker(
 ) : CoroutineWorker(appContext, params) {
 
     override suspend fun doWork(): Result {
-        val dao = AppDatabase.getInstance(applicationContext).productDao()
-        val products = dao.getAll()
+        return try {
+            val dao = AppDatabase.getInstance(applicationContext).productDao()
+            val products = dao.getAll()
 
-        for (product in products) {
-            val outcome = PriceExtractor.fetchPrice(applicationContext, product.url)
-            when (outcome) {
-                is PriceExtractor.Result.Success -> {
-                    val newPrice = outcome.priceRub
-                    val oldPrice = product.lastPrice
+            for (product in products) {
+                try {
+                    val outcome = PriceExtractor.fetchPrice(applicationContext, product.url)
+                    when (outcome) {
+                        is PriceExtractor.Result.Success -> {
+                            val newPrice = outcome.priceRub
+                            val oldPrice = product.lastPrice
 
-                    if (oldPrice != null && oldPrice != newPrice) {
-                        NotificationHelper.notifyPriceChanged(
-                            applicationContext, product, oldPrice, newPrice
-                        )
+                            if (oldPrice != null && oldPrice != newPrice) {
+                                NotificationHelper.notifyPriceChanged(
+                                    applicationContext, product, oldPrice, newPrice
+                                )
+                            }
+
+                            product.lastPrice = newPrice
+                            product.lastCheckedAt = System.currentTimeMillis()
+                            product.lastError = null
+                            dao.update(product)
+                        }
+                        is PriceExtractor.Result.Error -> {
+                            product.lastCheckedAt = System.currentTimeMillis()
+                            product.lastError = outcome.message
+                            dao.update(product)
+                        }
                     }
-
-                    product.lastPrice = newPrice
+                } catch (e: Throwable) {
                     product.lastCheckedAt = System.currentTimeMillis()
-                    product.lastError = null
-                    dao.update(product)
-                }
-                is PriceExtractor.Result.Error -> {
-                    product.lastCheckedAt = System.currentTimeMillis()
-                    product.lastError = outcome.message
+                    product.lastError = "Сбой: ${e.message ?: e.javaClass.simpleName}"
                     dao.update(product)
                 }
             }
-        }
 
-        return Result.success()
+            Result.success()
+        } catch (e: Throwable) {
+            Result.success()
+        }
     }
 }
