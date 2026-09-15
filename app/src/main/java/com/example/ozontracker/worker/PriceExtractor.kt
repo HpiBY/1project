@@ -20,58 +20,78 @@ object PriceExtractor {
             "(KHTML, like Gecko) Chrome/125.0.0.0 Mobile Safari/537.36"
 
     suspend fun fetchPrice(context: Context, url: String): Result {
-        return withTimeoutOrNull(LOAD_TIMEOUT_MS + 5000) {
-            withContext(Dispatchers.Main) {
-                loadAndExtract(context, url)
-            }
-        } ?: Result.Error("Таймаут загрузки страницы")
+        return try {
+            withTimeoutOrNull(LOAD_TIMEOUT_MS + 5000) {
+                withContext(Dispatchers.Main) {
+                    loadAndExtract(context, url)
+                }
+            } ?: Result.Error("Таймаут загрузки страницы")
+        } catch (e: Throwable) {
+            Result.Error("Сбой WebView: ${e.message ?: e.javaClass.simpleName}")
+        }
     }
 
     @SuppressLint("SetJavaScriptEnabled")
     private suspend fun loadAndExtract(context: Context, url: String): Result =
         suspendCancellableCoroutine { cont ->
-            val webView = WebView(context)
-            var resumed = false
+            try {
+                val webView = WebView(context)
+                var resumed = false
 
-            fun finish(result: Result) {
-                if (resumed) return
-                resumed = true
-                webView.stopLoading()
-                webView.destroy()
-                if (cont.isActive) cont.resume(result)
-            }
-
-            webView.settings.javaScriptEnabled = true
-            webView.settings.domStorageEnabled = true
-            webView.settings.userAgentString = USER_AGENT
-            webView.settings.loadWithOverviewMode = true
-            webView.settings.useWideViewPort = true
-
-            webView.webViewClient = object : WebViewClient() {
-                override fun onPageFinished(view: WebView?, finishedUrl: String?) {
-                    webView.postDelayed({
-                        webView.evaluateJavascript(EXTRACTION_SCRIPT) { rawResult ->
-                            finish(parseJsResult(rawResult))
-                        }
-                    }, SETTLE_DELAY_MS)
+                fun finish(result: Result) {
+                    if (resumed) return
+                    resumed = true
+                    try {
+                        webView.stopLoading()
+                        webView.destroy()
+                    } catch (_: Throwable) {
+                    }
+                    if (cont.isActive) cont.resume(result)
                 }
 
-                override fun onReceivedError(
-                    view: WebView?,
-                    errorCode: Int,
-                    description: String?,
-                    failingUrl: String?
-                ) {
-                    finish(Result.Error("Ошибка загрузки: $description"))
+                webView.settings.javaScriptEnabled = true
+                webView.settings.domStorageEnabled = true
+                webView.settings.userAgentString = USER_AGENT
+                webView.settings.loadWithOverviewMode = true
+                webView.settings.useWideViewPort = true
+
+                webView.webViewClient = object : WebViewClient() {
+                    override fun onPageFinished(view: WebView?, finishedUrl: String?) {
+                        webView.postDelayed({
+                            try {
+                                webView.evaluateJavascript(EXTRACTION_SCRIPT) { rawResult ->
+                                    finish(parseJsResult(rawResult))
+                                }
+                            } catch (e: Throwable) {
+                                finish(Result.Error("Ошибка JS: ${e.message}"))
+                            }
+                        }, SETTLE_DELAY_MS)
+                    }
+
+                    override fun onReceivedError(
+                        view: WebView?,
+                        errorCode: Int,
+                        description: String?,
+                        failingUrl: String?
+                    ) {
+                        finish(Result.Error("Ошибка загрузки: $description"))
+                    }
+                }
+
+                cont.invokeOnCancellation {
+                    try {
+                        webView.stopLoading()
+                        webView.destroy()
+                    } catch (_: Throwable) {
+                    }
+                }
+
+                webView.loadUrl(url)
+            } catch (e: Throwable) {
+                if (cont.isActive) {
+                    cont.resume(Result.Error("Не удалось создать WebView: ${e.message ?: e.javaClass.simpleName}"))
                 }
             }
-
-            cont.invokeOnCancellation {
-                webView.stopLoading()
-                webView.destroy()
-            }
-
-            webView.loadUrl(url)
         }
 
     private fun parseJsResult(raw: String?): Result {
