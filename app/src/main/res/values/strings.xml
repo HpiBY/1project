@@ -1,0 +1,8 @@
+<resources>
+    <string name="app_name">Ozon Price Tracker</string>
+    <string name="hint_url">Ссылка на товар ozon.by</string>
+    <string name="add">Добавить</string>
+    <string name="check_now">Проверить сейчас</string>
+    <string name="empty_list">Пока нет отслеживаемых товаров.\nВставьте ссылку выше.</string>
+    <string name="delete">Удалить</string>
+</resources>
