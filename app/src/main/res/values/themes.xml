@@ -1,0 +1,7 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <style name="Theme.OzonTracker" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="colorPrimary">#005BFF</item>
+        <item name="colorPrimaryDark">#0047CC</item>
+        <item name="colorAccent">#005BFF</item>
+    </style>
+</resources>
