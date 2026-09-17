@@ -2,13 +2,14 @@ package com.example.ozontracker.worker
 
 import android.content.Context
 import androidx.work.*
+import com.example.ozontracker.data.SettingsRepository
 import java.util.concurrent.TimeUnit
 
 object WorkScheduler {
 
     private const val WORK_NAME = "ozon_price_check"
 
-    fun schedule(context: Context, intervalHours: Long = 3) {
+    fun schedule(context: Context, intervalHours: Long = SettingsRepository.getIntervalHours(context)) {
         val constraints = Constraints.Builder()
             .setRequiredNetworkType(NetworkType.CONNECTED)
             .build()
@@ -20,7 +21,7 @@ object WorkScheduler {
 
         WorkManager.getInstance(context).enqueueUniquePeriodicWork(
             WORK_NAME,
-            ExistingPeriodicWorkPolicy.KEEP,
+            ExistingPeriodicWorkPolicy.UPDATE,
             request
         )
     }
