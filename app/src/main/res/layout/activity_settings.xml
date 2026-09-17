@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Настройки"
+        android:textSize="22sp"
+        android:textStyle="bold"
+        android:layout_marginBottom="16dp" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Как часто проверять цену"
+        android:textSize="16sp"
+        android:layout_marginBottom="8dp" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Слишком частые проверки повышают риск капчи от Ozon. Рекомендуется не чаще, чем раз в 3 часа."
+        android:textSize="12sp"
+        android:textColor="#888888"
+        android:layout_marginBottom="16dp" />
+
+    <RadioGroup
+        android:id="@+id/intervalGroup"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <RadioButton
+            android:id="@+id/interval1"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Каждый час (не рекомендуется)" />
+
+        <RadioButton
+            android:id="@+id/interval2"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Каждые 2 часа" />
+
+        <RadioButton
+            android:id="@+id/interval3"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Каждые 3 часа (по умолчанию)" />
+
+        <RadioButton
+            android:id="@+id/interval6"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Каждые 6 часов" />
+
+        <RadioButton
+            android:id="@+id/interval12"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Каждые 12 часов" />
+
+        <RadioButton
+            android:id="@+id/interval24"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Раз в сутки (безопаснее всего)" />
+
+    </RadioGroup>
+
+    <Button
+        android:id="@+id/saveButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="24dp"
+        android:text="Сохранить" />
+
+</LinearLayout>
