@@ -103,3 +103,72 @@ object PriceExtractor {
                     try {
                         webView.stopLoading()
                         webView.destroy()
+                    } catch (_: Throwable) {
+                    }
+                }
+
+                webView.loadUrl(WARMUP_URL)
+            } catch (e: Throwable) {
+                if (cont.isActive) {
+                    cont.resume(Result.Error("Не удалось создать WebView: ${e.message ?: e.javaClass.simpleName}"))
+                }
+            }
+        }
+
+    private fun parseJsResult(raw: String?): Result {
+        if (raw == null || raw == "null") return Result.Error("Цена не найдена на странице (возможно, капча)")
+        val cleaned = raw.trim('"').replace("\\\"", "\"")
+        if (cleaned.isBlank() || cleaned == "null") {
+            return Result.Error("Цена не найдена на странице (возможно, капча)")
+        }
+        val digitsOnly = cleaned.filter { it.isDigit() }
+        val price = digitsOnly.toLongOrNull()
+        return if (price != null && price > 0) {
+            Result.Success(price)
+        } else {
+            Result.Error("Не удалось распознать цену: '$cleaned'")
+        }
+    }
+
+    private const val EXTRACTION_SCRIPT = """
+        (function() {
+            function textOf(el) { return el ? el.innerText || el.textContent || "" : ""; }
+
+            var priceRegex = /[\d][\d\s]{1,}(?=[\s,.]{0,2}(?:\u20BD|Br|BYN|\u0440\.?))/i;
+            function findAmount(text) {
+                var m = text.match(priceRegex);
+                return m ? m[0].replace(/\s/g, '') : null;
+            }
+
+            var widgetSelectors = [
+                '[data-widget="webPrice"]',
+                '[data-widget="webSale"]',
+                '[data-widget="webOldPrice"]'
+            ];
+            for (var i = 0; i < widgetSelectors.length; i++) {
+                var el = document.querySelector(widgetSelectors[i]);
+                if (el) {
+                    var found = findAmount(textOf(el));
+                    if (found) return found;
+                }
+            }
+
+            var candidates = document.querySelectorAll('[class*="price" i], [data-testid*="price" i]');
+            for (var j = 0; j < candidates.length; j++) {
+                var found2 = findAmount(textOf(candidates[j]));
+                if (found2) return found2;
+            }
+
+            var bodyText = document.body ? document.body.innerText : "";
+            var found3 = findAmount(bodyText);
+            if (found3) return found3;
+
+            return null;
+        })();
+    """
+
+    sealed class Result {
+        data class Success(val priceRub: Long) : Result()
+        data class Error(val message: String) : Result()
+    }
+}
