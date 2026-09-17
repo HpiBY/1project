@@ -2,6 +2,7 @@ package com.example.ozontracker.worker
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.webkit.CookieManager
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import kotlinx.coroutines.Dispatchers
@@ -12,8 +13,9 @@ import kotlin.coroutines.resume
 
 object PriceExtractor {
 
-    private const val LOAD_TIMEOUT_MS = 20_000L
-    private const val SETTLE_DELAY_MS = 1500L
+    private const val LOAD_TIMEOUT_MS = 35_000L
+    private const val SETTLE_DELAY_MS = 2500L
+    private const val WARMUP_URL = "https://ozon.by/"
 
     private const val USER_AGENT =
         "Mozilla/5.0 (Linux; Android 13; Pixel 6) AppleWebKit/537.36 " +
@@ -21,22 +23,26 @@ object PriceExtractor {
 
     suspend fun fetchPrice(context: Context, url: String): Result {
         return try {
-            withTimeoutOrNull(LOAD_TIMEOUT_MS + 5000) {
+            withTimeoutOrNull(LOAD_TIMEOUT_MS + 10_000) {
                 withContext(Dispatchers.Main) {
                     loadAndExtract(context, url)
                 }
-            } ?: Result.Error("Таймаут загрузки страницы")
+            } ?: Result.Error("Таймаут загрузки страницы (возможно, капча)")
         } catch (e: Throwable) {
             Result.Error("Сбой WebView: ${e.message ?: e.javaClass.simpleName}")
         }
     }
 
     @SuppressLint("SetJavaScriptEnabled")
-    private suspend fun loadAndExtract(context: Context, url: String): Result =
+    private suspend fun loadAndExtract(context: Context, targetUrl: String): Result =
         suspendCancellableCoroutine { cont ->
             try {
                 val webView = WebView(context)
                 var resumed = false
+                var warmedUp = false
+
+                CookieManager.getInstance().setAcceptCookie(true)
+                CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true)
 
                 fun finish(result: Result) {
                     if (resumed) return
@@ -57,6 +63,14 @@ object PriceExtractor {
 
                 webView.webViewClient = object : WebViewClient() {
                     override fun onPageFinished(view: WebView?, finishedUrl: String?) {
+                        if (!warmedUp) {
+                            warmedUp = true
+                            webView.postDelayed({
+                                if (!resumed) webView.loadUrl(targetUrl)
+                            }, SETTLE_DELAY_MS)
+                            return
+                        }
+
                         webView.postDelayed({
                             try {
                                 webView.evaluateJavascript(EXTRACTION_SCRIPT) { rawResult ->
@@ -74,7 +88,14 @@ object PriceExtractor {
                         description: String?,
                         failingUrl: String?
                     ) {
-                        finish(Result.Error("Ошибка загрузки: $description"))
+                        if (!warmedUp) {
+                            warmedUp = true
+                            webView.postDelayed({
+                                if (!resumed) webView.loadUrl(targetUrl)
+                            }, SETTLE_DELAY_MS)
+                        } else {
+                            finish(Result.Error("Ошибка загрузки: $description"))
+                        }
                     }
                 }
 
@@ -82,72 +103,3 @@ object PriceExtractor {
                     try {
                         webView.stopLoading()
                         webView.destroy()
-                    } catch (_: Throwable) {
-                    }
-                }
-
-                webView.loadUrl(url)
-            } catch (e: Throwable) {
-                if (cont.isActive) {
-                    cont.resume(Result.Error("Не удалось создать WebView: ${e.message ?: e.javaClass.simpleName}"))
-                }
-            }
-        }
-
-    private fun parseJsResult(raw: String?): Result {
-        if (raw == null || raw == "null") return Result.Error("Цена не найдена на странице")
-        val cleaned = raw.trim('"').replace("\\\"", "\"")
-        if (cleaned.isBlank() || cleaned == "null") {
-            return Result.Error("Цена не найдена на странице")
-        }
-        val digitsOnly = cleaned.filter { it.isDigit() }
-        val price = digitsOnly.toLongOrNull()
-        return if (price != null && price > 0) {
-            Result.Success(price)
-        } else {
-            Result.Error("Не удалось распознать цену: '$cleaned'")
-        }
-    }
-
-    private const val EXTRACTION_SCRIPT = """
-        (function() {
-            function textOf(el) { return el ? el.innerText || el.textContent || "" : ""; }
-
-            var priceRegex = /[\d][\d\s]{1,}(?=[\s,.]{0,2}(?:\u20BD|Br|BYN|\u0440\.?))/i;
-            function findAmount(text) {
-                var m = text.match(priceRegex);
-                return m ? m[0].replace(/\s/g, '') : null;
-            }
-
-            var widgetSelectors = [
-                '[data-widget="webPrice"]',
-                '[data-widget="webSale"]',
-                '[data-widget="webOldPrice"]'
-            ];
-            for (var i = 0; i < widgetSelectors.length; i++) {
-                var el = document.querySelector(widgetSelectors[i]);
-                if (el) {
-                    var found = findAmount(textOf(el));
-                    if (found) return found;
-                }
-            }
-
-            var candidates = document.querySelectorAll('[class*="price" i], [data-testid*="price" i]');
-            for (var j = 0; j < candidates.length; j++) {
-                var found2 = findAmount(textOf(candidates[j]));
-                if (found2) return found2;
-            }
-
-            var bodyText = document.body ? document.body.innerText : "";
-            var found3 = findAmount(bodyText);
-            if (found3) return found3;
-
-            return null;
-        })();
-    """
-
-    sealed class Result {
-        data class Success(val priceRub: Long) : Result()
-        data class Error(val message: String) : Result()
-    }
-}
